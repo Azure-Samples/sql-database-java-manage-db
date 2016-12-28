@@ -89,8 +89,8 @@ public final class ManageSqlDatabase {
                 // Update the edition of database.
                 System.out.println("Updating a database");
                 database = database.update()
-                        .withEdition(DatabaseEditions.PREMIUM)
-                        .withServiceObjective(ServiceObjectiveName.P3)
+                        .withEdition(DatabaseEditions.STANDARD)
+                        .withServiceObjective(ServiceObjectiveName.S3)
                         .apply();
                 Utils.print(database);
 
