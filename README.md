@@ -1,13 +1,13 @@
 ---
 services: Sql
 platforms: java
-author: anudeepsharma
+author: milismsft
 ---
 
 ## Getting Started with Sql - Manage Sql Database - in Java ##
 
 
-  Azure Storage sample for managing SQL Database -
+  Azure SQL sample for managing SQL Database -
    - Create a SQL Server along with 2 firewalls.
    - Create a database in SQL server
    - Change performance level (SKU) of SQL Database
