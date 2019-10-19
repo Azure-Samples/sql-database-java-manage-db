@@ -4,7 +4,8 @@ languages:
 - java
 products:
 - azure
-description: "Getting Started with Sql - Manage Sql Database - in Java"
+- azure-sql-database
+description: "Azure SQL sample for managing SQL Database."
 urlFragment: sql-database-java-manage-db
 ---
 
