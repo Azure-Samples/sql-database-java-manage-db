@@ -1,30 +1,23 @@
-/**
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for
- * license information.
- */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-package com.microsoft.azure.management.sql.samples;
+package com.azure.resourcemanager.sql.samples;
 
-import com.microsoft.azure.AzureEnvironment;
-import com.microsoft.azure.AzureResponseBuilder;
-import com.microsoft.azure.credentials.ApplicationTokenCredentials;
-import com.microsoft.azure.management.Azure;
-import com.microsoft.azure.management.resources.fluentcore.arm.Region;
-import com.microsoft.azure.management.samples.Utils;
-import com.microsoft.azure.management.sql.DatabaseEdition;
-import com.microsoft.azure.management.sql.DatabaseMetric;
-import com.microsoft.azure.management.sql.ServiceObjectiveName;
-import com.microsoft.azure.management.sql.SqlDatabase;
-import com.microsoft.azure.management.sql.SqlFirewallRule;
-import com.microsoft.azure.management.sql.SqlServer;
-import com.microsoft.azure.serializer.AzureJacksonAdapter;
-import com.microsoft.rest.LogLevel;
-import com.microsoft.rest.RestClient;
 
-import java.io.File;
+import com.azure.core.credential.TokenCredential;
+import com.azure.core.http.policy.HttpLogDetailLevel;
+import com.azure.core.management.AzureEnvironment;
+import com.azure.core.management.Region;
+import com.azure.core.management.profile.AzureProfile;
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.samples.Utils;
+import com.azure.resourcemanager.sql.models.SqlDatabase;
+import com.azure.resourcemanager.sql.models.SqlDatabaseStandardServiceObjective;
+import com.azure.resourcemanager.sql.models.SqlFirewallRule;
+import com.azure.resourcemanager.sql.models.SqlServer;
+
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Azure SQL sample for managing SQL Database -
@@ -40,15 +33,14 @@ public final class ManageSqlDatabase {
 
     /**
      * Main function which runs the actual sample.
-     * @param azure instance of the azure client
+     * @param azureResourceManager instance of the azure client
      * @return true if sample runs successfully
      */
-    public static boolean runSample(Azure azure) {
-        final String sqlServerName = Utils.createRandomName("sqlserver");
-        final String rgName = Utils.createRandomName("rgRSDSI");
+    public static boolean runSample(AzureResourceManager azureResourceManager) {
+        final String sqlServerName = Utils.randomResourceName(azureResourceManager, "sqlserver", 20);
+        final String rgName = Utils.randomResourceName(azureResourceManager, "rgRSDSI", 20);
         final String administratorLogin = "sqladmin3423";
-        // [SuppressMessage("Microsoft.Security", "CS002:SecretInNextLine", Justification="Serves as an example, not for deployment. Please change when using this in your code.")]
-        final String administratorPassword = "myS3cureP@ssword";
+        final String administratorPassword = Utils.password();
         final String firewallRuleIPAddress = "10.0.0.1";
         final String firewallRuleStartIPAddress = "10.2.0.1";
         final String firewallRuleEndIPAddress = "10.2.0.10";
@@ -57,13 +49,14 @@ public final class ManageSqlDatabase {
 
             // ============================================================
             // Create a SQL Server, with 2 firewall rules.
-            SqlServer sqlServer = azure.sqlServers().define(sqlServerName)
+            SqlServer sqlServer = azureResourceManager.sqlServers().define(sqlServerName)
                     .withRegion(Region.US_EAST)
                     .withNewResourceGroup(rgName)
                     .withAdministratorLogin(administratorLogin)
                     .withAdministratorPassword(administratorPassword)
-                    .withNewFirewallRule(firewallRuleIPAddress)
-                    .withNewFirewallRule(firewallRuleStartIPAddress, firewallRuleEndIPAddress)
+                    .defineFirewallRule("filewallRule1").withIpAddress(firewallRuleIPAddress).attach()
+                    .defineFirewallRule("filewallRule2")
+                        .withIpAddressRange(firewallRuleStartIPAddress, firewallRuleEndIPAddress).attach()
                     .create();
 
             Utils.print(sqlServer);
@@ -81,8 +74,7 @@ public final class ManageSqlDatabase {
             // Update the edition of database.
             System.out.println("Updating a database");
             database = database.update()
-                    .withEdition(DatabaseEdition.STANDARD)
-                    .withServiceObjective(ServiceObjectiveName.S3)
+                    .withStandardEdition(SqlDatabaseStandardServiceObjective.S3)
                     .withMaxSizeBytes(1024 * 1024 * 1024 * 20)
                     .apply();
             Utils.print(database);
@@ -105,12 +97,12 @@ public final class ManageSqlDatabase {
             // Add new firewall rules.
             System.out.println("Creating a firewall rule for SQL Server");
             SqlFirewallRule firewallRule = sqlServer.firewallRules().define("myFirewallRule")
-                    .withIPAddress("10.10.10.10")
+                    .withIpAddress("10.10.10.10")
                     .create();
 
             Utils.print(firewallRule);
 
-            List<DatabaseMetric> usages = database.listUsages();
+            database.listUsageMetrics();
 
             // Delete the database.
             System.out.println("Deleting a database");
@@ -118,22 +110,17 @@ public final class ManageSqlDatabase {
 
             // Delete the SQL Server.
             System.out.println("Deleting a Sql Server");
-            azure.sqlServers().deleteById(sqlServer.id());
+            azureResourceManager.sqlServers().deleteById(sqlServer.id());
             return true;
-        } catch (Exception f) {
-            System.out.println(f.getMessage());
-            f.printStackTrace();
         } finally {
             try {
                 System.out.println("Deleting Resource Group: " + rgName);
-                azure.resourceGroups().deleteByName(rgName);
+                azureResourceManager.resourceGroups().beginDeleteByName(rgName);
                 System.out.println("Deleted Resource Group: " + rgName);
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 System.out.println("Did not create any resources in Azure. No clean up is necessary");
             }
         }
-        return false;
     }
     /**
      * Main entry point.
@@ -142,22 +129,21 @@ public final class ManageSqlDatabase {
     public static void main(String[] args) {
         try {
 
-            final File credFile = new File(System.getenv("AZURE_AUTH_LOCATION"));
+            final AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
+            final TokenCredential credential = new DefaultAzureCredentialBuilder()
+                .authorityHost(profile.getEnvironment().getActiveDirectoryEndpoint())
+                .build();
 
-            ApplicationTokenCredentials credentials = ApplicationTokenCredentials.fromFile(credFile);
-            RestClient restClient = new RestClient.Builder()
-                    .withBaseUrl(AzureEnvironment.AZURE, AzureEnvironment.Endpoint.RESOURCE_MANAGER)
-                    .withSerializerAdapter(new AzureJacksonAdapter())
-                    .withReadTimeout(150, TimeUnit.SECONDS)
-                    .withLogLevel(LogLevel.BODY)
-                    .withResponseBuilderFactory(new AzureResponseBuilder.Factory())
-                    .withCredentials(credentials).build();
-            Azure azure = Azure.authenticate(restClient, credentials.domain(), credentials.defaultSubscriptionId()).withDefaultSubscription();
+            AzureResourceManager azureResourceManager = AzureResourceManager
+                .configure()
+                .withLogLevel(HttpLogDetailLevel.BASIC)
+                .authenticate(credential, profile)
+                .withDefaultSubscription();
 
             // Print selected subscription
-            System.out.println("Selected subscription: " + azure.subscriptionId());
+            System.out.println("Selected subscription: " + azureResourceManager.subscriptionId());
 
-            runSample(azure);
+            runSample(azureResourceManager);
         } catch (Exception e) {
             System.out.println(e.getMessage());
             e.printStackTrace();
